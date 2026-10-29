@@ -1,0 +1,9 @@
+av<19
+faster-whisper
+numpy
+openai
+python-dotenv
+pyyaml
+requests
+sounddevice
+soundfile
