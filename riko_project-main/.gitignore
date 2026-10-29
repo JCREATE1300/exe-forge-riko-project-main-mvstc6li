@@ -1,0 +1,8 @@
+# your API keys
+.env
+
+# runtime files
+chat_history.json
+client/audio/
+.venv/
+__pycache__/
