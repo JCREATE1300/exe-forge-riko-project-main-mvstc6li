@@ -14,21 +14,41 @@ def check(cfg):
     need_key("OPENAI_API_KEY", f"the LLM, model {cfg['model']}")
 
 
+def _load_history(history_path):
+    if not history_path.exists():
+        return []
+    try:
+        parsed = json.loads(history_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        print(f"[llm] history reset because {history_path.name} was unreadable")
+        return []
+    if not isinstance(parsed, list):
+        print(f"[llm] history reset because {history_path.name} did not contain a list")
+        return []
+    return parsed
+
+
 def reply(user_text, cfg):
     history_path = ROOT / cfg["history_file"]
-    history = json.loads(history_path.read_text(encoding="utf-8")) if history_path.exists() else []
+    history = _load_history(history_path)
     history.append({"role": "user", "content": user_text})
 
-    # ponytail: sends the whole chat every turn; trim to history[-N:] if it gets long or pricey.
+    # Keep the conversation bounded; a long history gets expensive and noisy.
+    if len(history) > 50:
+        history = history[-50:]
+
     response = OpenAI().responses.create(
         model=cfg["model"],
         instructions=cfg["system_prompt"],
         input=history,
     )
+    reply_text = getattr(response, "output_text", None)
+    if not reply_text:
+        raise RuntimeError("OpenAI returned an empty response.")
 
-    history.append({"role": "assistant", "content": response.output_text})
+    history.append({"role": "assistant", "content": reply_text})
     history_path.write_text(json.dumps(history, indent=2, ensure_ascii=False), encoding="utf-8")
-    return response.output_text
+    return reply_text
 
 
 if __name__ == "__main__":

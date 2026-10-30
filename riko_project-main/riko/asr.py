@@ -24,11 +24,12 @@ _whisper = None  # Faster-Whisper model, loaded once by check()
 
 def check(cfg):
     global _whisper
-    if cfg["asr"] == "groq":
+    if cfg.get("asr") == "groq":
         need_key("GROQ_API_KEY", "asr: groq")
-    else:
-        print(f"[asr] loading Faster-Whisper {WHISPER_MODEL} on {WHISPER_DEVICE} (first run downloads it)...")
-        _whisper = WhisperModel(WHISPER_MODEL, device=WHISPER_DEVICE, compute_type="int8")
+        return
+
+    print(f"[asr] loading Faster-Whisper {WHISPER_MODEL} on {WHISPER_DEVICE} (first run downloads it)...")
+    _whisper = WhisperModel(WHISPER_MODEL, device=WHISPER_DEVICE, compute_type="int8")
 
 
 def record():
@@ -48,12 +49,18 @@ def record():
 
 
 def transcribe(wav_bytes, cfg):
-    if cfg["asr"] == "groq":
+    if cfg.get("asr") == "groq":
         groq = OpenAI(api_key=os.getenv("GROQ_API_KEY"), base_url="https://api.groq.com/openai/v1")
         text = groq.audio.transcriptions.create(model=GROQ_MODEL, file=("you.wav", wav_bytes)).text
     else:
-        segments, _ = _whisper.transcribe(io.BytesIO(wav_bytes))
-        text = "".join(s.text for s in segments)  # each segment already starts with a space
+        if _whisper is None:
+            raise RuntimeError("[asr] Faster-Whisper is not loaded. Run check(cfg) before transcribing.")
+        try:
+            segments, _ = _whisper.transcribe(io.BytesIO(wav_bytes), beam_size=5, temperature=0.0)
+        except TypeError:
+            segments, _ = _whisper.transcribe(io.BytesIO(wav_bytes))
+        parts = [segment.text.strip() for segment in segments if getattr(segment, "text", "").strip()]
+        text = " ".join(parts)
     return text.strip()
 
 

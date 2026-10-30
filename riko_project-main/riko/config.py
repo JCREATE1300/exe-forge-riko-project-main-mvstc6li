@@ -11,8 +11,14 @@ load_dotenv(ROOT / ".env")
 
 
 def load_config():
-    with open(ROOT / "character_config.yaml", encoding="utf-8") as f:
-        return yaml.safe_load(f)
+    config_path = ROOT / "character_config.yaml"
+    if not config_path.exists():
+        raise FileNotFoundError(f"[setup] Missing config file: {config_path}")
+    with open(config_path, encoding="utf-8") as f:
+        cfg = yaml.safe_load(f) or {}
+    if not isinstance(cfg, dict):
+        raise ValueError(f"[setup] Config file {config_path} is not a YAML dictionary.")
+    return cfg
 
 
 def need_key(name, why):

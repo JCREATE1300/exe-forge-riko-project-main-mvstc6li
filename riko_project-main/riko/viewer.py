@@ -79,6 +79,7 @@ def play(wav_path):
         _clips.put(f"audio/{wav_path.name}?v={time.time()}")  # ?v= so the browser never replays the old clip
         if not _finished.wait(timeout=duration + 10):
             print("[viewer] the page never said the clip ended; carrying on")
+        _finished.clear()
     else:
         print("[viewer] no avatar page open, playing on speakers")
         data, sample_rate = sf.read(wav_path)

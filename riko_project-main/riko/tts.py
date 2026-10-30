@@ -16,15 +16,20 @@ VOICE_FILE = ROOT / "client" / "audio" / "riko.wav"  # inside client/ so the ava
 
 
 def check(cfg):
-    if cfg["tts"] == "fish":
+    voice_type = cfg.get("tts", "sovits")
+    if voice_type == "fish":
         need_key("FISH_API_KEY", "tts: fish")
         return
-    ref_audio = ROOT / cfg["sovits"]["ref_audio_path"]
+
+    if not isinstance(cfg.get("sovits"), dict):
+        sys.exit("[setup] Missing 'sovits' settings in character_config.yaml.")
+
+    ref_audio = ROOT / cfg["sovits"].get("ref_audio_path", "")
     if not ref_audio.exists():
         sys.exit(f"[setup] Voice sample not found: {ref_audio}")
     try:
-        requests.head(cfg["sovits"]["url"], timeout=3)  # any answer means it is running
-    except requests.ConnectionError:
+        requests.head(cfg["sovits"]["url"], timeout=3)  # any response means the server is running
+    except requests.RequestException:
         sys.exit(f"[setup] GPT-SoVITS is not running at {cfg['sovits']['url']}. "
                  "Start its API first (python api_v2.py in your GPT-SoVITS folder), or use --tts fish.")
     print(f"[setup] GPT-SoVITS is running at {cfg['sovits']['url']}")
@@ -33,9 +38,18 @@ def check(cfg):
 def speak(text, cfg):
     """Make her say `text`. Returns the path of the WAV file."""
     audio = _fish(text, cfg["fish"]) if cfg["tts"] == "fish" else _sovits(text, cfg["sovits"])
+    if not audio:
+        raise ValueError("[tts] the TTS backend returned empty audio data.")
+
     # Re-save through soundfile: Fish's WAV header claims the clip is hours
     # long, and browsers believe it and never fire "ended". This fixes it.
-    data, sample_rate = sf.read(io.BytesIO(audio))
+    try:
+        data, sample_rate = sf.read(io.BytesIO(audio))
+    except Exception as exc:  # pragma: no cover - depends on backend payload format
+        raise ValueError(f"[tts] could not decode returned audio: {exc}") from exc
+    if data.size == 0:
+        raise ValueError("[tts] decoded audio was empty.")
+
     VOICE_FILE.parent.mkdir(parents=True, exist_ok=True)
     sf.write(VOICE_FILE, data, sample_rate)
     print(f"[tts] {cfg['tts']}: {len(data) / sample_rate:.1f}s of audio")
@@ -55,16 +69,18 @@ def _sovits(text, s):
 
 
 def _fish(text, f):
-    body = {"text": text, "format": "wav"}
-    if f["voice_id"]:
+    body = {"text": text, "format": "wav", "model": f["model"]}
+    if f.get("voice_id"):
         body["reference_id"] = f["voice_id"]
     response = requests.post(
         "https://api.fish.audio/v1/tts",
-        headers={"Authorization": f"Bearer {os.getenv('FISH_API_KEY')}", "model": f["model"]},
+        headers={"Authorization": f"Bearer {os.getenv('FISH_API_KEY')}"},
         json=body,
         timeout=120,
     )
     response.raise_for_status()
+    if not response.content:
+        raise ValueError("[tts] Fish Audio returned an empty response body.")
     return response.content
 
 

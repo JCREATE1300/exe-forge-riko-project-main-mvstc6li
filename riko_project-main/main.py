@@ -19,6 +19,11 @@ def main():
     args = parser.parse_args()
 
     cfg = load_config()
+    cfg.setdefault("model", "gpt-4.1-mini")
+    cfg.setdefault("history_file", "chat_history.json")
+    cfg.setdefault("system_prompt", "You are a helpful assistant named Riko.")
+    cfg.setdefault("asr", "local")
+    cfg.setdefault("tts", "sovits")
     cfg["asr"] = args.asr or cfg["asr"]
     cfg["tts"] = args.tts or cfg["tts"]
 
